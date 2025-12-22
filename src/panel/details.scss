@@ -10,6 +10,52 @@
         &.svDetailsInfo {
             padding: 12px 22px;
 
+            .svDetailsStatusButtons {
+                display: flex;
+                align-items: center;
+                gap: 8px;
+                margin-bottom: 12px;
+                padding: 8px;
+                background-color: var(--vscode-editor-background);
+                border-radius: 4px;
+                border: 1px solid var(--vscode-panel-border);
+                
+                span {
+                    color: rgb(139, 139, 139);
+                    font-size: 12px;
+                }
+            }
+            
+            .svStatusButton {
+                padding: 4px 12px;
+                border: 1px solid var(--vscode-button-border, var(--vscode-panel-border));
+                border-radius: 3px;
+                background-color: var(--vscode-button-secondaryBackground);
+                color: var(--vscode-button-secondaryForeground);
+                cursor: pointer;
+                font-size: 11px;
+                
+                &:hover {
+                    background-color: var(--vscode-button-secondaryHoverBackground);
+                }
+                
+                &.svStatusButtonActive {
+                    font-weight: bold;
+                }
+                
+                &.svStatusButtonTP {
+                    background-color: rgba(241, 76, 76, 0.2);
+                    border-color: #f14c4c;
+                    color: #f14c4c;
+                }
+                
+                &.svStatusButtonFP {
+                    background-color: rgba(128, 128, 128, 0.2);
+                    border-color: #808080;
+                    color: #808080;
+                }
+            }
+
             .svDetailsMessage {
                 margin-bottom: 16px;
                 white-space: pre-line;

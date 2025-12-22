@@ -11,7 +11,7 @@ import '../shared/extension';
 import { Details } from './details';
 import { FilterKeywordContext } from './filterKeywordContext';
 import './index.scss';
-import { IndexStore, postLoad, postRefresh } from './indexStore';
+import { IndexStore, postLoad, postRefresh, postSaveStateFile, postLoadStateFile } from './indexStore';
 import { ResultTable } from './resultTable';
 import { RowItem } from './tableStore';
 import { Checkrow, Icon, Popover, ResizeHandle, Tab, TabPanel } from './widgets';
@@ -76,6 +76,8 @@ export { DetailsLayouts } from './details.layouts';
                             visible={!activeTableStore}
                             onClick={() => vscode.postMessage({ command: 'closeAllLogs' })} />
                         <Icon name="folder-opened" title="Open Log" onClick={() => vscode.postMessage({ command: 'open' })} />
+                        <Icon name="save" title="Save State" onClick={() => postSaveStateFile()} />
+                        <Icon name="folder" title="Load State" onClick={() => postLoadStateFile()} />
                     </>}>
                     <Tab name={store.tabs[0]} count={store.resultTableStoreByLocation.groupsFilteredSorted.length}>
                         <ResultTable store={store.resultTableStoreByLocation} onClearFilters={() => store.clearFilters()}
@@ -114,7 +116,9 @@ export { DetailsLayouts } from './details.layouts';
             <div className="svResizer">
                 <ResizeHandle size={detailsPaneHeight} />
             </div>
-            <Details result={selected} resultsFixed={store.resultsFixed} height={detailsPaneHeight} />
+            <Details result={selected} resultsFixed={store.resultsFixed} height={detailsPaneHeight}
+                onSetResultStatus={(resultId, status) => store.setResultStatus(resultId, status)}
+                getResultStatus={(resultId) => store.getResultStatus(resultId)} />
             <Popover show={showFilterPopup} style={{ top: 35, right: 8 + 35 + 35 + 8 }}>
                 {Object.entries(store.filtersRow).map(([name, state]) => <Fragment key={name}>
                     <div className="svPopoverTitle">{name}</div>

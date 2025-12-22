@@ -200,7 +200,7 @@ export class Tab<T> extends PureComponent<{ name: T, count?: number }> {
     }
 }
 
-export class ResizeHandle extends Component<{ size: IObservableValue<number>, horizontal?: boolean }> {
+export class ResizeHandle extends Component<{ size: IObservableValue<number>, horizontal?: boolean, minSize?: number }> {
     private startingMouse = Number.NaN
     private startingSize = Number.NaN
 
@@ -214,9 +214,9 @@ export class ResizeHandle extends Component<{ size: IObservableValue<number>, ho
 
     @action.bound private onMouseMove(e: MouseEvent) {
         // Assert !isNaN(this.dragMouse))
-        const {horizontal} = this.props;
+        const {horizontal, minSize = 0} = this.props;
         const delta = this.startingMouse - (horizontal ? e.x : e.y);
-        this.props.size.set(Math.max(0, this.startingSize + delta * (horizontal ? -1 : 1)));
+        this.props.size.set(Math.max(minSize, this.startingSize + delta * (horizontal ? -1 : 1)));
         e.preventDefault(); // Prevent text selection.
     }
 

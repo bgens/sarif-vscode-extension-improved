@@ -8,6 +8,10 @@ import { KeyboardEvent, memo, PureComponent, ReactNode } from 'react';
 import { Badge, css, Hi, Icon, ResizeHandle } from './widgets';
 import './table.scss';
 import { Column, RowGroup, RowItem, TableStore } from './tableStore';
+import { ResultStatus } from '../shared';
+
+// Minimum column width to prevent columns from becoming too small
+const MIN_COLUMN_WIDTH = 50;
 
 interface TableProps<T, G> {
     columns: Column<T>[];
@@ -15,6 +19,7 @@ interface TableProps<T, G> {
     renderGroup: (group: G) => ReactNode;
     renderCell: (column: Column<T>, itemData: T) => ReactNode;
     store: TableStore<T, G>;
+    getResultStatus?: (item: T) => ResultStatus;
 }
 @observer export class Table<T, G> extends PureComponent<TableProps<T, G>> {
     @computed get gridTemplateColumns() {
@@ -23,15 +28,21 @@ interface TableProps<T, G> {
             '34px', // Left margin. Aligns with tabs left margin (22px) + group chevron (12px).
             // Variable number of columns set to user-desired width.
             // First column has an extra 22px allowance for the `level` icon.
-            ...columns.map((col, i) => `${(i === 0 ? 22 : 0) + col.width.get()}px`),
+            ...columns.map((col, i) => `${(i === 0 ? 22 : 0) + Math.max(col.width.get(), MIN_COLUMN_WIDTH)}px`),
             '1fr', // Fill remaining space so the the selection/hover highlight doesn't look funny.
         ].join(' ');
     }
 
-    private TableItem = memo<{ isLineThrough: boolean, isSelected: boolean, item: RowItem<T>, gridTemplateColumns: string, menuContext: Record<string, string> | undefined }>(props => {
+    private TableItem = memo<{ isLineThrough: boolean, isSelected: boolean, item: RowItem<T>, gridTemplateColumns: string, menuContext: Record<string, string> | undefined, resultStatus: ResultStatus }>(props => {
         const { columns, store, renderIconName, renderCell } = this.props;
-        const { isLineThrough, isSelected, item, gridTemplateColumns, menuContext } = props;
-        return <div className={css('svTableRow', 'svTableRowItem', isLineThrough && 'svLineThrough', isSelected && 'svItemSelected')} style={{ gridTemplateColumns }}
+        const { isLineThrough, isSelected, item, gridTemplateColumns, menuContext, resultStatus } = props;
+
+        // Determine CSS class based on result status
+        const statusClass = resultStatus === 'true-positive' ? 'svTruePositive'
+            : resultStatus === 'false-positive' ? 'svFalsePositive'
+                : '';
+
+        return <div className={css('svTableRow', 'svTableRowItem', isLineThrough && 'svLineThrough', isSelected && 'svItemSelected', statusClass)} style={{ gridTemplateColumns }}
             data-vscode-context={JSON.stringify(menuContext)}
             ref={ele => { // TODO: ForwardRef for Group
                 if (!isSelected || !ele) return;
@@ -52,7 +63,7 @@ interface TableProps<T, G> {
 
     render() {
         const {TableItem} = this;
-        const {columns, store, renderGroup, children} = this.props;
+        const {columns, store, renderGroup, children, getResultStatus} = this.props;
         const {rows, selection} = store;
         return !rows.length
             ? children // Zero data.
@@ -63,7 +74,7 @@ interface TableProps<T, G> {
                         onClick={action(() => store.toggleSort(col.name))}>
                         {col.name}{/* No spacing */}
                         {store.sortColumn === col.name && <Icon title="Sort" name={store.sortDir} />}
-                        <ResizeHandle size={col.width} horizontal />
+                        <ResizeHandle size={col.width} horizontal minSize={MIN_COLUMN_WIDTH} />
                     </div>)}
                 </div>
                 <div tabIndex={0} className={css('svTableBody', selection.get() && 'svSelected')} onKeyDown={this.onKeyDown}>
@@ -84,12 +95,14 @@ interface TableProps<T, G> {
                         }
                         if (row instanceof RowItem) {
                             // Must evaluate isLineThrough outside of <TableItem /> so the function component knows to update.
+                            const resultStatus = getResultStatus ? getResultStatus(row.item) : 'unchecked';
                             return <TableItem key={row.key}
                                 isLineThrough={store.isLineThrough(row.item)}
                                 isSelected={isSelected}
                                 item={row}
                                 gridTemplateColumns={this.gridTemplateColumns}
-                                menuContext={store.menuContext(row.item)} />;
+                                menuContext={store.menuContext(row.item)}
+                                resultStatus={resultStatus} />;
                         }
                         return undefined; // Closed system: No other types expected.
                     })}

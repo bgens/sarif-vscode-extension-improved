@@ -9,10 +9,10 @@ import * as React from 'react';
 import { Component, Fragment } from 'react';
 import ReactMarkdown from 'react-markdown';
 import { Location, Result, StackFrame, ThreadFlowLocation } from 'sarif';
-import { parseArtifactLocation, parseLocation, decodeFileUri } from '../shared';
+import { parseArtifactLocation, parseLocation, decodeFileUri, ResultStatus } from '../shared';
 import './details.scss';
 import './index.scss';
-import { postRemoveResultFixed, postSelectArtifact, postSelectLog } from './indexStore';
+import { postRemoveResultFixed, postSelectArtifact, postSelectLog, postSetBasePath } from './indexStore';
 import { List, Tab, TabPanel, renderMessageTextWithEmbeddedLinks } from './widgets';
 
 // ReactMarkdown blocks `vscode:` and `command:` URIs by default. This is a workaround.
@@ -25,7 +25,13 @@ function uriTransformer(uri: string) {
 
 type TabName = 'Info' | 'Analysis Steps';
 
-interface DetailsProps { result: Result, resultsFixed: string[], height: IObservableValue<number> }
+interface DetailsProps {
+    result: Result;
+    resultsFixed: string[];
+    height: IObservableValue<number>;
+    onSetResultStatus?: (resultId: string, status: ResultStatus) => void;
+    getResultStatus?: (resultId: string) => ResultStatus;
+}
 @observer export class Details extends Component<DetailsProps> {
     private selectedTab = observable.box<TabName>('Info')
     @computed private get threadFlowLocations(): ThreadFlowLocation[] {
@@ -62,8 +68,10 @@ interface DetailsProps { result: Result, resultsFixed: string[], height: IObserv
             return `${text}: ${justification}`;
         };
 
-        const {result, resultsFixed, height} = this.props;
+        const {result, resultsFixed, height, onSetResultStatus, getResultStatus} = this.props;
         const helpUri = result?._rule?.helpUri;
+        const resultIdStr = result ? JSON.stringify(result._id) : '';
+        const currentStatus = getResultStatus ? getResultStatus(resultIdStr) : 'unchecked';
 
         return <div className="svDetailsPane" style={{ height: height.get() }}>
             {result && <TabPanel selection={this.selectedTab}>
@@ -76,10 +84,33 @@ interface DetailsProps { result: Result, resultsFixed: string[], height: IObserv
                                 postRemoveResultFixed(result);
                             }}>Clear</a>.
                         </div>}
-                        <div className="svDetailsMessage">
-                            {result._markdown
-                                ? <ReactMarkdown className="svMarkDown" source={result._markdown} transformLinkUri={uriTransformer} />
-                                : renderMessageTextWithEmbeddedLinks(result._message, result, vscode.postMessage)}</div>
+                        {/* Result Status Marking Buttons */}
+                        <div className="svDetailsStatusButtons">
+                            <span>Mark as: </span>
+                            <button
+                                className={`svStatusButton ${currentStatus === 'true-positive' ? 'svStatusButtonActive svStatusButtonTP' : ''}`}
+                                onClick={() => onSetResultStatus?.(resultIdStr, currentStatus === 'true-positive' ? 'unchecked' : 'true-positive')}
+                                title="Mark as True Positive"
+                            >
+                                True Positive
+                            </button>
+                            <button
+                                className={`svStatusButton ${currentStatus === 'false-positive' ? 'svStatusButtonActive svStatusButtonFP' : ''}`}
+                                onClick={() => onSetResultStatus?.(resultIdStr, currentStatus === 'false-positive' ? 'unchecked' : 'false-positive')}
+                                title="Mark as False Positive"
+                            >
+                                False Positive
+                            </button>
+                            {currentStatus !== 'unchecked' && (
+                                <button
+                                    className="svStatusButton"
+                                    onClick={() => onSetResultStatus?.(resultIdStr, 'unchecked')}
+                                    title="Clear status"
+                                >
+                                    Clear
+                                </button>
+                            )}
+                        </div>
                         <div className="svDetailsGrid">
                             <span>Rule Id</span>			{helpUri ? <a href={helpUri} target="_blank" rel="noopener noreferrer">{result.ruleId}</a> : <span>{result.ruleId}</span>}
                             <span>Rule Name</span>			<span>{result._rule?.name ?? '—'}</span>

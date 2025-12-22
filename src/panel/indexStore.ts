@@ -3,7 +3,7 @@
 
 import { action, autorun, computed, intercept, observable, observe, toJS, when } from 'mobx';
 import { Log, PhysicalLocation, ReportingDescriptor, Result } from 'sarif';
-import { augmentLog, CommandExtensionToPanel, filtersColumn, filtersRow, findResult, parseArtifactLocation, Visibility } from '../shared';
+import { augmentLog, CommandExtensionToPanel, filtersColumn, filtersRow, findResult, parseArtifactLocation, ResultStatus, ResultStatusMap, Visibility } from '../shared';
 import '../shared/extension';
 import { isActive } from './isActive';
 import { ResultTableStore } from './resultTableStore';
@@ -13,6 +13,12 @@ export class IndexStore {
     @observable banner = '';
 
     private driverlessRules = new Map<string, ReportingDescriptor>();
+
+    // Result status tracking (FP/TP/unchecked)
+    @observable resultStatuses: ResultStatusMap = {}
+
+    // Dynamic columns from SARIF properties
+    @observable.shallow dynamicColumns: string[] = []
 
     constructor(state: Record<string, Record<string, Record<string, Visibility>>>, workspaceUri?: string, defaultSelection?: boolean) {
         this.filtersRow = state.filtersRow;
@@ -35,6 +41,8 @@ export class IndexStore {
             if (change.type !== 'splice') throw new Error(`Unexpected change type. ${change.type}`);
             change.added.forEach((log: Log) => {
                 augmentLog(log, this.driverlessRules, workspaceUri);
+                // Extract dynamic columns from result properties
+                this.extractDynamicColumns(log);
             });
             return change;
         });
@@ -92,6 +100,42 @@ export class IndexStore {
         { toString: () => 'Rules', store: this.resultTableStoreByRule },
         { toString: () => 'Logs', store: undefined },
     ] as { store: ResultTableStore<string | ReportingDescriptor> | undefined }[]
+
+    // Extract dynamic columns from SARIF result properties
+    @action private extractDynamicColumns(log: Log) {
+        const propertyKeys = new Set<string>();
+        log.runs?.forEach(run => {
+            run.results?.forEach(result => {
+                if (result.properties) {
+                    Object.keys(result.properties).forEach(key => {
+                        if (key !== 'tags') { // tags is reserved
+                            propertyKeys.add(key);
+                        }
+                    });
+                }
+            });
+        });
+        // Add new columns that don't already exist
+        propertyKeys.forEach(key => {
+            if (!this.dynamicColumns.includes(key)) {
+                this.dynamicColumns.push(key);
+                // Add to filtersColumn if not present
+                if (!this.filtersColumn.Columns[key]) {
+                    this.filtersColumn.Columns[key] = false;
+                }
+            }
+        });
+    }
+
+    // Result status methods
+    @action setResultStatus(resultId: string, status: ResultStatus) {
+        this.resultStatuses[resultId] = status;
+        vscode.postMessage({ command: 'setResultStatus', resultId, status });
+    }
+
+    getResultStatus(resultId: string): ResultStatus {
+        return this.resultStatuses[resultId] || 'unchecked';
+    }
     selectedTab = observable.box(this.tabs[0], { deep: false })
 
     // Messages
@@ -142,6 +186,19 @@ export class IndexStore {
         if (command === 'setBanner') {
             this.banner = event.data?.text ?? '';
         }
+
+        if (command === 'basePathSet') {
+            // Base path was set for a log, results may now resolve
+            // Trigger re-render by updating banner temporarily
+            const oldBanner = this.banner;
+            this.banner = 'Base path updated. Paths should now resolve.';
+            setTimeout(() => { this.banner = oldBanner; }, 3000);
+        }
+
+        if (command === 'loadResultStatuses') {
+            // Load result statuses from state file
+            this.resultStatuses = event.data.resultStatuses || {};
+        }
     }
 }
 
@@ -175,4 +232,16 @@ export async function postRefresh() {
 
 export async function postRemoveResultFixed(result: Result) {
     await vscode.postMessage({ command: 'removeResultFixed', id: result._id });
+}
+
+export async function postSetBasePath(logUri: string, uri: string) {
+    await vscode.postMessage({ command: 'setBasePath', logUri, uri });
+}
+
+export async function postSaveStateFile() {
+    await vscode.postMessage({ command: 'saveStateFile' });
+}
+
+export async function postLoadStateFile() {
+    await vscode.postMessage({ command: 'loadStateFile' });
 }

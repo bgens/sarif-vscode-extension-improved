@@ -7,7 +7,7 @@ import jsonMap from 'json-source-map';
 import { autorun, IArraySplice, observable, observe } from 'mobx';
 import { Log, Region, Result } from 'sarif';
 import { commands, ExtensionContext, TextEditorRevealType, Uri, ViewColumn, WebviewPanel, window, workspace } from 'vscode';
-import { CommandPanelToExtension, filtersColumn, filtersRow, JsonMap, ResultId } from '../shared';
+import { CommandPanelToExtension, filtersColumn, filtersRow, JsonMap, ResultId, ResultStatus, ResultStatusMap, StateFile } from '../shared';
 import { getOriginalDoc } from './getOriginalDoc';
 import { loadLogs } from './loadLogs';
 import { driftedRegionToSelection } from './regionToSelection';
@@ -17,6 +17,10 @@ import { UriRebaser } from './uriRebaser';
 export class Panel {
     private title = 'SARIF Result'
     @observable private panel: WebviewPanel | null = null
+    // Store base paths per log URI for relative path resolution
+    private basePaths = new Map<string, string>()
+    // Store result statuses (FP/TP/unchecked)
+    private resultStatuses: ResultStatusMap = {}
 
     constructor(
         readonly context: Pick<ExtensionContext, 'extensionPath' | 'subscriptions'>,
@@ -170,6 +174,88 @@ export class Panel {
                 case 'removeResultFixed': {
                     const idToRemove = JSON.stringify(message.id);
                     store.resultsFixed.removeFirst(id => id === idToRemove);
+                    break;
+                }
+                case 'setBasePath': {
+                    const { logUri, uri } = message as { logUri: string, uri: string };
+                    // Prompt user to set base path for relative paths
+                    const selectedFolder = await window.showOpenDialog({
+                        canSelectFiles: false,
+                        canSelectFolders: true,
+                        canSelectMany: false,
+                        openLabel: 'Select Base Path',
+                        title: `Select base path for: ${uri}`,
+                        defaultUri: workspace.workspaceFolders?.[0]?.uri,
+                    });
+                    if (selectedFolder?.[0]) {
+                        const basePath = selectedFolder[0].toString();
+                        this.basePaths.set(logUri, basePath);
+                        basing.uriBases.push(basePath);
+                        // Notify panel that base path was set
+                        await this.panel?.webview.postMessage({
+                            command: 'basePathSet',
+                            logUri,
+                            basePath
+                        });
+                    }
+                    break;
+                }
+                case 'setResultStatus': {
+                    const { resultId, status } = message as { resultId: string, status: ResultStatus };
+                    this.resultStatuses[resultId] = status;
+                    break;
+                }
+                case 'saveStateFile': {
+                    const defaultUri = workspace.workspaceFolders?.[0]?.uri
+                        ? Uri.joinPath(workspace.workspaceFolders[0].uri, 'sarif-state.json')
+                        : undefined;
+                    const saveUri = await window.showSaveDialog({
+                        defaultUri,
+                        filters: { 'JSON files': ['json'] },
+                        title: 'Save SARIF Viewer State',
+                    });
+                    if (saveUri) {
+                        const stateFile: StateFile = {
+                            version: 1,
+                            basePaths: Object.fromEntries(this.basePaths),
+                            resultStatuses: this.resultStatuses,
+                        };
+                        await fs.promises.writeFile(saveUri.fsPath, JSON.stringify(stateFile, null, 2));
+                        void window.showInformationMessage('State file saved successfully.');
+                    }
+                    break;
+                }
+                case 'loadStateFile': {
+                    const openUris = await window.showOpenDialog({
+                        canSelectMany: false,
+                        defaultUri: workspace.workspaceFolders?.[0]?.uri,
+                        filters: { 'JSON files': ['json'] },
+                        title: 'Load SARIF Viewer State',
+                    });
+                    if (openUris?.[0]) {
+                        try {
+                            const content = await fs.promises.readFile(openUris[0].fsPath, 'utf8');
+                            const stateFile: StateFile = JSON.parse(content);
+                            // Restore base paths
+                            this.basePaths.clear();
+                            for (const [logUri, basePath] of Object.entries(stateFile.basePaths)) {
+                                this.basePaths.set(logUri, basePath);
+                                if (!basing.uriBases.includes(basePath)) {
+                                    basing.uriBases.push(basePath);
+                                }
+                            }
+                            // Restore result statuses
+                            this.resultStatuses = stateFile.resultStatuses;
+                            // Notify panel to update result statuses
+                            await this.panel?.webview.postMessage({
+                                command: 'loadResultStatuses',
+                                resultStatuses: this.resultStatuses,
+                            });
+                            void window.showInformationMessage('State file loaded successfully.');
+                        } catch (e) {
+                            void window.showErrorMessage(`Failed to load state file: ${(e as Error).message}`);
+                        }
+                    }
                     break;
                 }
                 default:

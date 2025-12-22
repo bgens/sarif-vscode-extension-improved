@@ -24,6 +24,34 @@
         text-decoration: line-through;
         opacity: 0.5;
     }
+    
+    // True Positive styling - red text
+    .svTableRowItem.svTruePositive > .svTableCell > span {
+        color: #f14c4c;
+    }
+    .svTableRowItem.svTruePositive > .svTableCell .codicon {
+        color: #f14c4c;
+    }
+    
+    // False Positive styling - faded grey text
+    .svTableRowItem.svFalsePositive > .svTableCell > span {
+        color: #808080;
+        opacity: 0.6;
+    }
+    .svTableRowItem.svFalsePositive > .svTableCell .codicon {
+        color: #808080;
+        opacity: 0.6;
+    }
+    
+    // Status column styling
+    .svStatusTP {
+        color: #f14c4c !important;
+        font-weight: bold;
+    }
+    .svStatusFP {
+        color: #808080 !important;
+        opacity: 0.6;
+    }
 
     .svTableHeader {
         display: grid;

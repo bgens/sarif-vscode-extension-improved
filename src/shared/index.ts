@@ -246,11 +246,25 @@ export const filtersRow: Record<string, Record<string, Visibility>> = {
 
 export const filtersColumn: Record<string, Record<string, Visibility>> = {
     Columns: {
+        'Message': 'visible',
         'Baseline': false,
         'Suppression': false,
         'Rule': false,
     },
 };
 
-export type CommandPanelToExtension = 'load' | 'open' | 'closeLog' | 'closeAllLogs' | 'select' | 'selectLog' | 'setState' | 'refresh' | 'removeResultFixed';
-export type CommandExtensionToPanel = 'select' | 'spliceLogs' | 'spliceResultsFixed' | 'setBanner';
+export type CommandPanelToExtension = 'load' | 'open' | 'closeLog' | 'closeAllLogs' | 'select' | 'selectLog' | 'setState' | 'refresh' | 'removeResultFixed' | 'setBasePath' | 'setResultStatus' | 'saveStateFile' | 'loadStateFile';
+export type CommandExtensionToPanel = 'select' | 'spliceLogs' | 'spliceResultsFixed' | 'setBanner' | 'basePathSet' | 'loadResultStatuses';
+
+// Result status types for marking findings
+export type ResultStatus = 'unchecked' | 'true-positive' | 'false-positive';
+
+export interface ResultStatusMap {
+    [resultIdJson: string]: ResultStatus;
+}
+
+export interface StateFile {
+    version: number;
+    basePaths: { [logUri: string]: string };
+    resultStatuses: ResultStatusMap;
+}

@@ -33,6 +33,12 @@ interface ResultTableProps<G> {
                 <span>{result._rule?.name ?? '—'}</span>
                 <span className="svSecondary">{result.ruleId}</span>
             </>,
+            'Status':   result => {
+                const status = this.props.store.getResultStatus(result);
+                return <span className={status === 'true-positive' ? 'svStatusTP' : status === 'false-positive' ? 'svStatusFP' : ''}>
+                    {status === 'true-positive' ? 'TP' : status === 'false-positive' ? 'FP' : '—'}
+                </span>;
+            },
         } as Record<string, (result: Result) => ReactNode>;
         const defaultRenderer = (result: Result) => {
             const capitalize = (str: string) => `${str[0].toUpperCase()}${str.slice(1)}`;
@@ -47,7 +53,8 @@ interface ResultTableProps<G> {
         const { renderCell } = this;
         return <Table columns={store.visibleColumns} store={store}
             renderIconName={result => levelToIcon[result.level ?? 'undefined']}
-            renderGroup={renderGroup} renderCell={renderCell}>
+            renderGroup={renderGroup} renderCell={renderCell}
+            getResultStatus={result => store.getResultStatus(result)}>
             <div className="svZeroData">
                 <span>No results found with provided filter criteria.</span>
                 <div onClick={onClearFilters}>Clear Filters</div>

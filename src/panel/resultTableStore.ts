@@ -3,7 +3,7 @@
 
 import { computed, IObservableValue } from 'mobx';
 import { Result } from 'sarif';
-import { Visibility } from '../shared';
+import { ResultStatus, ResultStatusMap, Visibility } from '../shared';
 import { IndexStore } from './indexStore';
 import { Column, Row, TableStore } from './tableStore';
 
@@ -11,7 +11,7 @@ export class ResultTableStore<G> extends TableStore<Result, G> {
     constructor(
         readonly groupName: string,
         readonly groupBy: (item: Result) => G | undefined,
-        private readonly resultsSource: Pick<IndexStore, 'results' | 'resultsFixed'>,
+        private readonly resultsSource: Pick<IndexStore, 'results' | 'resultsFixed' | 'resultStatuses' | 'dynamicColumns'>,
         readonly filtersSource: {
             keywords: string;
             filtersRow: Record<string, Record<string, Visibility>>;
@@ -30,15 +30,32 @@ export class ResultTableStore<G> extends TableStore<Result, G> {
     private columnsPermanent = [
         new Column<Result>('Line', 50, result => result._region?.startLine?.toString() ?? '—', result => result._region?.startLine ?? 0),
         new Column<Result>('File', 250, result => result._relativeUri ?? ''),
-        new Column<Result>('Message', 300, result => result._message ?? ''),
+        new Column<Result>('Status', 100, result => {
+            const status = this.resultsSource.resultStatuses[JSON.stringify(result._id)];
+            return status === 'true-positive' ? 'TP' : status === 'false-positive' ? 'FP' : '—';
+        }),
     ]
     private columnsOptional = [
+        new Column<Result>('Message', 300, result => result._message ?? ''),
         new Column<Result>('Baseline', 100, result => result.baselineState ?? ''),
         new Column<Result>('Suppression', 100, result => result._suppression ?? ''),
         new Column<Result>('Rule', 220, result => `${result._rule?.name ?? '—'} ${result.ruleId ?? '—'}`),
     ]
+
+    // Dynamic columns from SARIF properties
+    @computed get dynamicPropertyColumns(): Column<Result>[] {
+        return this.resultsSource.dynamicColumns.map(key =>
+            new Column<Result>(key, 150, result => {
+                const value = result.properties?.[key];
+                if (value === null || value === undefined) return '—';
+                if (typeof value === 'object') return JSON.stringify(value);
+                return String(value);
+            })
+        );
+    }
+
     get columns() {
-        return [...this.columnsPermanent, ...this.columnsOptional];
+        return [...this.columnsPermanent, ...this.columnsOptional, ...this.dynamicPropertyColumns];
     }
     @computed get visibleColumns() {
         const {filtersColumn} = this.filtersSource;
@@ -47,7 +64,8 @@ export class ResultTableStore<G> extends TableStore<Result, G> {
             .map(([name, ]) => name);
         return [
             ...this.columnsPermanent.filter(col => col.name !== this.groupName),
-            ...this.columnsOptional.filter(col => optionalColumnNames.includes(col.name))
+            ...this.columnsOptional.filter(col => optionalColumnNames.includes(col.name)),
+            ...this.dynamicPropertyColumns.filter(col => optionalColumnNames.includes(col.name))
         ];
     }
 
@@ -78,6 +96,10 @@ export class ResultTableStore<G> extends TableStore<Result, G> {
 
     public isLineThrough(result: Result): boolean {
         return this.resultsSource.resultsFixed.includes(JSON.stringify(result._id));
+    }
+
+    public getResultStatus(result: Result): ResultStatus {
+        return this.resultsSource.resultStatuses[JSON.stringify(result._id)] || 'unchecked';
     }
 
     public menuContext(result: Result): Record<string, string> | undefined {

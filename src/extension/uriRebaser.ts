@@ -281,9 +281,30 @@ export class UriRebaser {
             }
 
             this.activeInfoMessages.add(artifactUri);
-            const choice = await window.showInformationMessage(`Unable to find '${artifactUri.file}'`, 'Locate...');
+            const choice = await window.showInformationMessage(
+                `Unable to find '${artifactUri.file}'`,
+                'Locate File...',
+                'Set Base Path...'
+            );
             this.activeInfoMessages.delete(artifactUri);
-            if (choice) {
+            if (choice === 'Set Base Path...') {
+                // Let user select a base folder that will apply to all relative paths
+                const folders = await window.showOpenDialog({
+                    canSelectFiles: false,
+                    canSelectFolders: true,
+                    canSelectMany: false,
+                    openLabel: 'Select Base Path',
+                    title: `Select base path for resolving relative paths`,
+                    defaultUri: workspace.workspaceFolders?.[0]?.uri,
+                });
+                if (folders?.length) {
+                    const basePath = folders[0].toString();
+                    if (!this.uriBases.includes(basePath)) {
+                        this.uriBases.push(basePath);
+                    }
+                    void window.showInformationMessage(`Base path set to: ${folders[0].fsPath}`);
+                }
+            } else if (choice === 'Locate File...') {
                 const extension = artifactUri.match(/\.([\w]+)$/)?.[1] ?? '';
                 const files = await window.showOpenDialog({
                     defaultUri: workspace.workspaceFolders?.[0]?.uri,
