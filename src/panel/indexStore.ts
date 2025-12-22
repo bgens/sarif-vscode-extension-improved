@@ -22,7 +22,10 @@ export class IndexStore {
 
     constructor(state: Record<string, Record<string, Record<string, Visibility>>>, workspaceUri?: string, defaultSelection?: boolean) {
         this.filtersRow = state.filtersRow;
-        this.filtersColumn = state.filtersColumn;
+        // Merge stored column filters with defaults to ensure new columns are included
+        this.filtersColumn = {
+            Columns: { ...filtersColumn.Columns, ...state.filtersColumn?.Columns }
+        };
         const setState = async () => {
             const {filtersRow, filtersColumn} = this;
             const state = { filtersRow: toJS(filtersRow), filtersColumn: toJS(filtersColumn) };
@@ -80,6 +83,13 @@ export class IndexStore {
     selection = observable.box<Row | undefined>(undefined)
     resultTableStoreByLocation = new ResultTableStore('File', result => result._relativeUri, this, this, this.selection)
     resultTableStoreByRule     = new ResultTableStore('Rule', result => result._rule,        this, this, this.selection)
+
+    // Column ordering
+    @observable.shallow columnOrder: string[] = []
+
+    @action setColumnOrder(order: string[]) {
+        this.columnOrder = order;
+    }
 
     // Filters
     @observable keywords = ''

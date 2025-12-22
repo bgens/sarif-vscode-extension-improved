@@ -1,10 +1,10 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-import { action, computed } from 'mobx';
+import { action, computed, observable } from 'mobx';
 import { observer } from 'mobx-react';
 import * as React from 'react';
-import { KeyboardEvent, memo, PureComponent, ReactNode } from 'react';
+import { Component, KeyboardEvent, memo, ReactNode } from 'react';
 import { Badge, css, Hi, Icon, ResizeHandle } from './widgets';
 import './table.scss';
 import { Column, RowGroup, RowItem, TableStore } from './tableStore';
@@ -20,22 +20,59 @@ interface TableProps<T, G> {
     renderCell: (column: Column<T>, itemData: T) => ReactNode;
     store: TableStore<T, G>;
     getResultStatus?: (item: T) => ResultStatus;
+    onColumnReorder?: (fromIndex: number, toIndex: number) => void;
 }
-@observer export class Table<T, G> extends PureComponent<TableProps<T, G>> {
+@observer export class Table<T, G> extends Component<TableProps<T, G>> {
+    // Drag state for column reordering
+    @observable private dragColumnIndex: number | null = null;
+    @observable private dragOverColumnIndex: number | null = null;
+
     @computed get gridTemplateColumns() {
-        const {columns} = this.props;
+        const {columns, renderIconName} = this.props;
         return [
             '34px', // Left margin. Aligns with tabs left margin (22px) + group chevron (12px).
+            // Dedicated icon column (only if icons are rendered)
+            ...(renderIconName ? ['22px'] : []),
             // Variable number of columns set to user-desired width.
-            // First column has an extra 22px allowance for the `level` icon.
-            ...columns.map((col, i) => `${(i === 0 ? 22 : 0) + Math.max(col.width.get(), MIN_COLUMN_WIDTH)}px`),
+            ...columns.map((col) => `${Math.max(col.width.get(), MIN_COLUMN_WIDTH)}px`),
             '1fr', // Fill remaining space so the the selection/hover highlight doesn't look funny.
         ].join(' ');
     }
 
-    private TableItem = memo<{ isLineThrough: boolean, isSelected: boolean, item: RowItem<T>, gridTemplateColumns: string, menuContext: Record<string, string> | undefined, resultStatus: ResultStatus }>(props => {
-        const { columns, store, renderIconName, renderCell } = this.props;
-        const { isLineThrough, isSelected, item, gridTemplateColumns, menuContext, resultStatus } = props;
+    @action.bound private onDragStart(e: React.DragEvent<HTMLDivElement>, index: number) {
+        this.dragColumnIndex = index;
+        e.dataTransfer.effectAllowed = 'move';
+        e.dataTransfer.setData('text/plain', index.toString());
+    }
+
+    @action.bound private onDragOver(e: React.DragEvent<HTMLDivElement>, index: number) {
+        e.preventDefault();
+        e.dataTransfer.dropEffect = 'move';
+        this.dragOverColumnIndex = index;
+    }
+
+    @action.bound private onDragLeave() {
+        this.dragOverColumnIndex = null;
+    }
+
+    @action.bound private onDrop(e: React.DragEvent<HTMLDivElement>, toIndex: number) {
+        e.preventDefault();
+        const fromIndex = this.dragColumnIndex;
+        if (fromIndex !== null && fromIndex !== toIndex && this.props.onColumnReorder) {
+            this.props.onColumnReorder(fromIndex, toIndex);
+        }
+        this.dragColumnIndex = null;
+        this.dragOverColumnIndex = null;
+    }
+
+    @action.bound private onDragEnd() {
+        this.dragColumnIndex = null;
+        this.dragOverColumnIndex = null;
+    }
+
+    private TableItem = memo<{ isLineThrough: boolean, isSelected: boolean, item: RowItem<T>, gridTemplateColumns: string, menuContext: Record<string, string> | undefined, resultStatus: ResultStatus, columns: Column<T>[] }>(props => {
+        const { store, renderIconName, renderCell } = this.props;
+        const { isLineThrough, isSelected, item, gridTemplateColumns, menuContext, resultStatus, columns } = props;
 
         // Determine CSS class based on result status
         const statusClass = resultStatus === 'true-positive' ? 'svTruePositive'
@@ -53,24 +90,37 @@ interface TableProps<T, G> {
                 store.selection.set(item);
             }}>
             <div></div>
-            {columns.map((col, i) => <Hi key={i} className="svTableCell"
+            {renderIconName && <div className="svTableCell svIconCell"><Icon name={renderIconName(item.item)} /></div>}
+            {columns.map((col, i) => <Hi key={col.name} className="svTableCell"
                 style={i === columns.length - 1 ? { gridColumn: 'auto / span 2' } : {}}>
-                {i === 0 && renderIconName && <Icon name={renderIconName(item.item)} />}
                 {renderCell(col, item.item)}
             </Hi>)}
         </div>;
     })
 
     render() {
-        const {TableItem} = this;
-        const {columns, store, renderGroup, children, getResultStatus} = this.props;
+        const {TableItem, dragColumnIndex, dragOverColumnIndex} = this;
+        const {columns, store, renderGroup, children, getResultStatus, onColumnReorder} = this.props;
         const {rows, selection} = store;
         return !rows.length
             ? children // Zero data.
             : <div className="svTable" data-vscode-context='{"preventDefaultContextMenuItems": true}'>
                 <div className="svTableHeader" style={{ gridTemplateColumns: this.gridTemplateColumns }}>
                     <div></div>
-                    {columns.map(col => <div key={col.name} tabIndex={0} className="svTableCell"
+                    {this.props.renderIconName && <div></div>}
+                    {columns.map((col, colIndex) => <div key={col.name} tabIndex={0}
+                        className={css(
+                            'svTableCell',
+                            onColumnReorder && 'svDraggable',
+                            dragColumnIndex === colIndex && 'svDragging',
+                            dragOverColumnIndex === colIndex && 'svDragOver'
+                        )}
+                        draggable={!!onColumnReorder}
+                        onDragStart={e => this.onDragStart(e, colIndex)}
+                        onDragOver={e => this.onDragOver(e, colIndex)}
+                        onDragLeave={this.onDragLeave}
+                        onDrop={e => this.onDrop(e, colIndex)}
+                        onDragEnd={this.onDragEnd}
                         onClick={action(() => store.toggleSort(col.name))}>
                         {col.name}{/* No spacing */}
                         {store.sortColumn === col.name && <Icon title="Sort" name={store.sortDir} />}
@@ -102,7 +152,8 @@ interface TableProps<T, G> {
                                 item={row}
                                 gridTemplateColumns={this.gridTemplateColumns}
                                 menuContext={store.menuContext(row.item)}
-                                resultStatus={resultStatus} />;
+                                resultStatus={resultStatus}
+                                columns={columns} />;
                         }
                         return undefined; // Closed system: No other types expected.
                     })}

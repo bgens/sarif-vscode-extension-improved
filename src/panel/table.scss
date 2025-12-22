@@ -18,6 +18,11 @@
         & > * + * { margin-left: 6px; } // Cell-part.
     }
 
+    .svIconCell {
+        padding: 0;
+        justify-content: center;
+    }
+
     // We can to avoid a line-through on the icon which is a <div>
     // However, targeting <span> is an abstraction break.
     .svTableRowItem.svLineThrough > .svTableCell > span {
@@ -60,6 +65,19 @@
         & > * { // Cell.
             position: relative; // For resize handle.
             &:hover { background-color: var(--vscode-list-hoverBackground); }
+        }
+
+        .svDraggable {
+            cursor: grab;
+            &:active { cursor: grabbing; }
+        }
+
+        .svDragging {
+            opacity: 0.5;
+        }
+
+        .svDragOver {
+            border-left: 2px solid var(--vscode-focusBorder);
         }
     }
 

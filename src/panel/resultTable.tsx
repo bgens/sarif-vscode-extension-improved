@@ -54,7 +54,8 @@ interface ResultTableProps<G> {
         return <Table columns={store.visibleColumns} store={store}
             renderIconName={result => levelToIcon[result.level ?? 'undefined']}
             renderGroup={renderGroup} renderCell={renderCell}
-            getResultStatus={result => store.getResultStatus(result)}>
+            getResultStatus={result => store.getResultStatus(result)}
+            onColumnReorder={(fromIndex, toIndex) => store.moveColumn(fromIndex, toIndex)}>
             <div className="svZeroData">
                 <span>No results found with provided filter criteria.</span>
                 <div onClick={onClearFilters}>Clear Filters</div>

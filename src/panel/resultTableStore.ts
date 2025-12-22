@@ -11,7 +11,7 @@ export class ResultTableStore<G> extends TableStore<Result, G> {
     constructor(
         readonly groupName: string,
         readonly groupBy: (item: Result) => G | undefined,
-        private readonly resultsSource: Pick<IndexStore, 'results' | 'resultsFixed' | 'resultStatuses' | 'dynamicColumns'>,
+        private readonly resultsSource: Pick<IndexStore, 'results' | 'resultsFixed' | 'resultStatuses' | 'dynamicColumns' | 'columnOrder' | 'setColumnOrder'>,
         readonly filtersSource: {
             keywords: string;
             filtersRow: Record<string, Record<string, Visibility>>;
@@ -23,19 +23,20 @@ export class ResultTableStore<G> extends TableStore<Result, G> {
             resultsSource,
             selection,
         );
-        this.sortColumn = this.columnsPermanent[0].name;
+        // Set default sort column - use first available column
+        this.sortColumn = this.columnsOptional[0]?.name ?? 'Line';
     }
 
     // Columns
-    private columnsPermanent = [
+    private columnsPermanent: Column<Result>[] = [
+    ]
+    private columnsOptional = [
         new Column<Result>('Line', 50, result => result._region?.startLine?.toString() ?? '—', result => result._region?.startLine ?? 0),
         new Column<Result>('File', 250, result => result._relativeUri ?? ''),
         new Column<Result>('Status', 100, result => {
             const status = this.resultsSource.resultStatuses[JSON.stringify(result._id)];
             return status === 'true-positive' ? 'TP' : status === 'false-positive' ? 'FP' : '—';
         }),
-    ]
-    private columnsOptional = [
         new Column<Result>('Message', 300, result => result._message ?? ''),
         new Column<Result>('Baseline', 100, result => result.baselineState ?? ''),
         new Column<Result>('Suppression', 100, result => result._suppression ?? ''),
@@ -62,11 +63,36 @@ export class ResultTableStore<G> extends TableStore<Result, G> {
         const optionalColumnNames = Object.entries(filtersColumn.Columns)
             .filter(([_, state]) => state)
             .map(([name, ]) => name);
-        return [
+        const unorderedColumns = [
             ...this.columnsPermanent.filter(col => col.name !== this.groupName),
             ...this.columnsOptional.filter(col => optionalColumnNames.includes(col.name)),
             ...this.dynamicPropertyColumns.filter(col => optionalColumnNames.includes(col.name))
         ];
+
+        // Apply custom column order if set
+        const { columnOrder } = this.resultsSource;
+        if (columnOrder && columnOrder.length > 0) {
+            const orderedColumns: Column<Result>[] = [];
+            // First add columns in the specified order
+            for (const colName of columnOrder) {
+                const col = unorderedColumns.find(c => c.name === colName);
+                if (col) orderedColumns.push(col);
+            }
+            // Then add any columns not in the order list
+            for (const col of unorderedColumns) {
+                if (!orderedColumns.includes(col)) orderedColumns.push(col);
+            }
+            return orderedColumns;
+        }
+        return unorderedColumns;
+    }
+
+    // Method to reorder columns via drag and drop
+    moveColumn(fromIndex: number, toIndex: number) {
+        const columns = this.visibleColumns.map(c => c.name);
+        const [moved] = columns.splice(fromIndex, 1);
+        columns.splice(toIndex, 0, moved);
+        this.resultsSource.setColumnOrder(columns);
     }
 
     protected get filter() {

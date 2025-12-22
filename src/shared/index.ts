@@ -246,6 +246,9 @@ export const filtersRow: Record<string, Record<string, Visibility>> = {
 
 export const filtersColumn: Record<string, Record<string, Visibility>> = {
     Columns: {
+        'Line': 'visible',
+        'File': 'visible',
+        'Status': 'visible',
         'Message': 'visible',
         'Baseline': false,
         'Suppression': false,
