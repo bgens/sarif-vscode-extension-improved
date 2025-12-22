@@ -54,6 +54,9 @@ export async function activate(context: ExtensionContext): Promise<Api> {
     const panel = new Panel(context, baser, store);
     disposables.push(commands.registerCommand('sarif.showPanel', () => panel.show()));
 
+    // Auto-load any previously saved state
+    await panel.autoLoadState();
+
     // URI handler
     disposables.push(window.registerUriHandler({
         async handleUri(uri: vscode.Uri) {

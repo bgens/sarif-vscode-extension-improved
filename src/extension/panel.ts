@@ -21,6 +21,8 @@ export class Panel {
     private basePaths = new Map<string, string>()
     // Store result statuses (FP/TP/unchecked)
     private resultStatuses: ResultStatusMap = {}
+    // Auto-save debounce timer
+    private autoSaveTimeout: NodeJS.Timeout | null = null
 
     constructor(
         readonly context: Pick<ExtensionContext, 'extensionPath' | 'subscriptions'>,
@@ -44,6 +46,66 @@ export class Panel {
         autorun(() => {
             this.panel?.webview.postMessage({ command: 'setBanner', text: store.banner });
         });
+    }
+
+    // Get the default state file path in the workspace
+    private getDefaultStateFilePath(): Uri | undefined {
+        const workspaceFolder = workspace.workspaceFolders?.[0]?.uri;
+        if (!workspaceFolder) return undefined;
+        return Uri.joinPath(workspaceFolder, '.sarif-viewer-state.json');
+    }
+
+    // Auto-save state with debouncing to prevent too many writes
+    private scheduleAutoSave() {
+        if (this.autoSaveTimeout) {
+            clearTimeout(this.autoSaveTimeout);
+        }
+        this.autoSaveTimeout = setTimeout(() => {
+            void this.autoSaveState();
+        }, 500); // 500ms debounce
+    }
+
+    private async autoSaveState() {
+        const stateFilePath = this.getDefaultStateFilePath();
+        if (!stateFilePath) return;
+
+        const stateFile: StateFile = {
+            version: 1,
+            basePaths: Object.fromEntries(this.basePaths),
+            resultStatuses: this.resultStatuses,
+        };
+        try {
+            await fs.promises.writeFile(stateFilePath.fsPath, JSON.stringify(stateFile, null, 2));
+        } catch (e) {
+            console.error('Failed to auto-save state:', e);
+        }
+    }
+
+    // Auto-load state from workspace on initialization
+    public async autoLoadState() {
+        const stateFilePath = this.getDefaultStateFilePath();
+        if (!stateFilePath) return;
+
+        try {
+            const exists = fs.existsSync(stateFilePath.fsPath);
+            if (!exists) return;
+
+            const content = await fs.promises.readFile(stateFilePath.fsPath, 'utf8');
+            const stateFile: StateFile = JSON.parse(content);
+            
+            // Restore base paths
+            this.basePaths.clear();
+            for (const [logUri, basePath] of Object.entries(stateFile.basePaths)) {
+                this.basePaths.set(logUri, basePath);
+                if (!this.basing.uriBases.includes(basePath)) {
+                    this.basing.uriBases.push(basePath);
+                }
+            }
+            // Restore result statuses
+            this.resultStatuses = stateFile.resultStatuses || {};
+        } catch (e) {
+            console.error('Failed to auto-load state:', e);
+        }
     }
 
     public async show() {
@@ -106,6 +168,13 @@ export class Panel {
                 case 'load' : {
                     // Extension sends Panel an initial set of logs.
                     await this.panel?.webview.postMessage(this.createSpliceLogsMessage([], store.logs));
+                    // Also send any previously loaded result statuses
+                    if (Object.keys(this.resultStatuses).length > 0) {
+                        await this.panel?.webview.postMessage({
+                            command: 'loadResultStatuses',
+                            resultStatuses: this.resultStatuses,
+                        });
+                    }
                     break;
                 }
                 case 'open': {
@@ -197,12 +266,16 @@ export class Panel {
                             logUri,
                             basePath
                         });
+                        // Auto-save state
+                        this.scheduleAutoSave();
                     }
                     break;
                 }
                 case 'setResultStatus': {
                     const { resultId, status } = message as { resultId: string, status: ResultStatus };
                     this.resultStatuses[resultId] = status;
+                    // Auto-save state
+                    this.scheduleAutoSave();
                     break;
                 }
                 case 'saveStateFile': {
