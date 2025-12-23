@@ -11,7 +11,7 @@ export class ResultTableStore<G> extends TableStore<Result, G> {
     constructor(
         readonly groupName: string,
         readonly groupBy: (item: Result) => G | undefined,
-        private readonly resultsSource: Pick<IndexStore, 'results' | 'resultsFixed' | 'resultStatuses' | 'dynamicColumns' | 'columnOrder' | 'setColumnOrder'>,
+        private readonly resultsSource: Pick<IndexStore, 'results' | 'resultsFixed' | 'resultStatuses' | 'dynamicColumns' | 'dynamicColumnVisibility' | 'columnOrder' | 'setColumnOrder'>,
         readonly filtersSource: {
             keywords: string;
             filtersRow: Record<string, Record<string, Visibility>>;
@@ -44,15 +44,28 @@ export class ResultTableStore<G> extends TableStore<Result, G> {
     ]
 
     // Dynamic columns from SARIF properties
+    private static readonly MAX_DISPLAY_VALUE_LENGTH = 500;
+
     @computed get dynamicPropertyColumns(): Column<Result>[] {
-        return this.resultsSource.dynamicColumns.map(key =>
-            new Column<Result>(key, 150, result => {
-                const value = result.properties?.[key];
+        return this.resultsSource.dynamicColumns.map(key => {
+            // Handle truncated column names - need to match original property key
+            const originalKey = key.endsWith('…') ? key.slice(0, -1) : key;
+            return new Column<Result>(key, 150, result => {
+                // Try exact key first, then truncated prefix match
+                let value = result.properties?.[key];
+                if (value === undefined && key !== originalKey) {
+                    // Find property that starts with the truncated prefix
+                    const matchingKey = Object.keys(result.properties ?? {}).find(k => k.startsWith(originalKey));
+                    if (matchingKey) value = result.properties?.[matchingKey];
+                }
                 if (value === null || value === undefined) return '—';
-                if (typeof value === 'object') return JSON.stringify(value);
-                return String(value);
-            })
-        );
+                const str = typeof value === 'object' ? JSON.stringify(value) : String(value);
+                // Truncate long values for display
+                return str.length > ResultTableStore.MAX_DISPLAY_VALUE_LENGTH
+                    ? str.slice(0, ResultTableStore.MAX_DISPLAY_VALUE_LENGTH) + '…'
+                    : str;
+            });
+        });
     }
 
     get columns() {
@@ -63,10 +76,14 @@ export class ResultTableStore<G> extends TableStore<Result, G> {
         const optionalColumnNames = Object.entries(filtersColumn.Columns)
             .filter(([_, state]) => state)
             .map(([name, ]) => name);
+        // Dynamic columns use separate visibility tracking (not persisted)
+        const visibleDynamicColumns = Object.entries(this.resultsSource.dynamicColumnVisibility)
+            .filter(([_, state]) => state)
+            .map(([name, ]) => name);
         const unorderedColumns = [
             ...this.columnsPermanent.filter(col => col.name !== this.groupName),
             ...this.columnsOptional.filter(col => optionalColumnNames.includes(col.name)),
-            ...this.dynamicPropertyColumns.filter(col => optionalColumnNames.includes(col.name))
+            ...this.dynamicPropertyColumns.filter(col => visibleDynamicColumns.includes(col.name))
         ];
 
         // Apply custom column order if set

@@ -51,6 +51,8 @@ export class IndexStore {
         });
 
         observe(this.logs, () => {
+            // Rebuild dynamic columns when logs change (files opened/closed)
+            this.rebuildDynamicColumns();
             if (this.logs.length) return;
             this.selection.set(undefined);
         });
@@ -111,7 +113,12 @@ export class IndexStore {
         { toString: () => 'Logs', store: undefined },
     ] as { store: ResultTableStore<string | ReportingDescriptor> | undefined }[]
 
-    // Extract dynamic columns from SARIF result properties
+    // Dynamic columns from SARIF properties (not persisted - rebuilt from loaded files)
+    private static readonly MAX_DYNAMIC_COLUMNS = 1000;
+    private static readonly MAX_COLUMN_NAME_LENGTH = 64;
+    // Track visibility of dynamic columns separately (not persisted)
+    @observable dynamicColumnVisibility: Record<string, Visibility> = {}
+
     @action private extractDynamicColumns(log: Log) {
         const propertyKeys = new Set<string>();
         log.runs?.forEach(run => {
@@ -125,16 +132,35 @@ export class IndexStore {
                 }
             });
         });
-        // Add new columns that don't already exist
+        // Add new columns that don't already exist (with limits for security)
         propertyKeys.forEach(key => {
+            if (this.dynamicColumns.length >= IndexStore.MAX_DYNAMIC_COLUMNS) return;
             if (!this.dynamicColumns.includes(key)) {
-                this.dynamicColumns.push(key);
-                // Add to filtersColumn if not present
-                if (!this.filtersColumn.Columns[key]) {
-                    this.filtersColumn.Columns[key] = false;
+                // Truncate long column names
+                const truncatedKey = key.length > IndexStore.MAX_COLUMN_NAME_LENGTH
+                    ? key.slice(0, IndexStore.MAX_COLUMN_NAME_LENGTH) + '…'
+                    : key;
+                this.dynamicColumns.push(truncatedKey);
+                // Initialize visibility (not persisted)
+                if (this.dynamicColumnVisibility[truncatedKey] === undefined) {
+                    this.dynamicColumnVisibility[truncatedKey] = false;
                 }
             }
         });
+    }
+
+    // Rebuild dynamic columns when logs change (e.g., when a log is closed)
+    @action private rebuildDynamicColumns() {
+        const oldVisibility = { ...this.dynamicColumnVisibility };
+        this.dynamicColumns = [];
+        this.dynamicColumnVisibility = {};
+        this.logs.forEach(log => this.extractDynamicColumns(log));
+        // Restore visibility for columns that still exist
+        for (const key of this.dynamicColumns) {
+            if (oldVisibility[key] !== undefined) {
+                this.dynamicColumnVisibility[key] = oldVisibility[key];
+            }
+        }
     }
 
     // Result status methods

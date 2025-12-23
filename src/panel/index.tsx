@@ -132,6 +132,10 @@ export { DetailsLayouts } from './details.layouts';
                     <div className="svPopoverTitle">{name}</div>
                     {Object.keys(state).map(name => <Checkrow key={name} label={name} state={state} />)}
                 </Fragment>)}
+                {store.dynamicColumns.length > 0 && <>
+                    <div className="svPopoverTitle">Dynamic Properties</div>
+                    {store.dynamicColumns.map(name => <Checkrow key={name} label={name} state={store.dynamicColumnVisibility} />)}
+                </>}
             </Popover>
         </FilterKeywordContext.Provider>;
     }
