@@ -110,24 +110,15 @@ mark {
         flex: 0 1 250px;
         height: 22px;
         margin-right: 8px;
-        display: grid;
-        & > * { grid-area: 1/1; }
 
         input {
+            width: 100%;
             background-color: var(--vscode-input-background);
             color: var(--vscode-input-foreground);
             border: none;
             padding: 4px 5px;
             font-size: 12px;
             overflow: hidden;
-        }
-
-        .codicon {
-            justify-self: end;
-            line-height: 22px;
-            width: 30px;
-            margin: 1px; // Allow parent outline to show.
-            background-color: var(--vscode-input-background); // Incase of overlap
         }
     }
 }

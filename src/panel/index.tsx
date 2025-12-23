@@ -24,6 +24,7 @@ export { DetailsLayouts } from './details.layouts';
 
 @observer export class Index extends Component<{ store: IndexStore }> {
     private showFilterPopup = observable.box(false)
+    private showColumnPopup = observable.box(false)
     private detailsPaneHeight = observable.box(300)
 
     render() {
@@ -50,7 +51,7 @@ export { DetailsLayouts } from './details.layouts';
         }
 
         const {logs, keywords} = store;
-        const {showFilterPopup, detailsPaneHeight} = this;
+        const {showFilterPopup, showColumnPopup, detailsPaneHeight} = this;
         const activeTableStore = store.selectedTab.get().store;
         const allCollapsed = activeTableStore?.groupsFilteredSorted.every(group => !group.expanded) ?? false;
         const selectedRow = store.selection.get();
@@ -65,8 +66,9 @@ export { DetailsLayouts } from './details.layouts';
                             <input type="text" placeholder="Filter results" value={store.keywords}
                                 onChange={e => store.keywords = e.target.value}
                                 onKeyDown={e => { if (e.key === 'Escape') { store.keywords = ''; } } }/>
-                            <Icon name="filter" title="Filter Options" onMouseDown={e => e.stopPropagation()} onClick={() => showFilterPopup.set(!showFilterPopup.get())} />
                         </div>
+                        <Icon name="filter" title="Filter Options" onMouseDown={e => e.stopPropagation()} onClick={() => showFilterPopup.set(!showFilterPopup.get())} />
+                        <Icon name="list-flat" title="Toggle Columns" onMouseDown={e => e.stopPropagation()} onClick={() => showColumnPopup.set(!showColumnPopup.get())} />
                         <Icon name={allCollapsed ? 'expand-all' : 'collapse-all'}
                             title={allCollapsed ? 'Expand All' : 'Collapse All'}
                             visible={!!activeTableStore}
@@ -119,12 +121,13 @@ export { DetailsLayouts } from './details.layouts';
             <Details result={selected} resultsFixed={store.resultsFixed} height={detailsPaneHeight}
                 onSetResultStatus={(resultId, status) => store.setResultStatus(resultId, status)}
                 getResultStatus={(resultId) => store.getResultStatus(resultId)} />
-            <Popover show={showFilterPopup} style={{ top: 35, right: 8 + 35 + 35 + 8 }}>
+            <Popover show={showFilterPopup} style={{ top: 35, right: 8 + 35 + 35 + 35 + 35 + 8 }}>
                 {Object.entries(store.filtersRow).map(([name, state]) => <Fragment key={name}>
                     <div className="svPopoverTitle">{name}</div>
                     {Object.keys(state).map(name => <Checkrow key={name} label={name} state={state} />)}
                 </Fragment>)}
-                <div className="svPopoverDivider" />
+            </Popover>
+            <Popover show={showColumnPopup} style={{ top: 35, right: 8 + 35 + 35 + 35 + 8 }}>
                 {Object.entries(store.filtersColumn).map(([name, state]) => <Fragment key={name}>
                     <div className="svPopoverTitle">{name}</div>
                     {Object.keys(state).map(name => <Checkrow key={name} label={name} state={state} />)}
